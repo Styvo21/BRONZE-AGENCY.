@@ -7,19 +7,15 @@
 <style>
 body{margin:0;font-family:Arial,sans-serif;background:#f2f2f2}
 header{background:#111;color:#fff;padding:15px;display:flex;justify-content:space-between;align-items:center;}
-#balance{background:orange;padding:5px 10px;border-radius:5px;cursor:pointer}
+#balance{background:orange;padding:5px 10px;border-radius:5px;cursor:pointer;display:none}
 section{display:none;padding:20px}
 .container{background:#fff;padding:20px;border-radius:8px;max-width:400px;margin:auto}
 input,textarea,button,select{width:100%;padding:10px;margin:5px 0}
 button{background:#111;color:#fff;border:none;border-radius:5px;cursor:pointer}
 button:hover{background:#333}
 #msg{text-align:center;font-weight:bold;margin:10px}
-#steps{display:flex;justify-content:center;gap:10px;margin:10px;}
-.step{padding:8px 12px;background:#ccc;border-radius:20px;font-size:12px}
-.step.active{background:orange;color:#fff}
 #loader{display:none;text-align:center;margin:10px}
 .spinner{border:6px solid #f3f3f3;border-top:6px solid orange;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:auto}
-@keyframes spin{100%{transform:rotate(360deg)}}
 .task-buttons button{margin:5px 5px 5px 0}
 </style>
 </head>
@@ -32,13 +28,7 @@ button:hover{background:#333}
 
 <div id="msg"></div>
 
-<div id="steps">
-  <div class="step" id="step1">Register</div>
-  <div class="step" id="step2">Payment</div>
-  <div class="step" id="step3">Approval</div>
-  <div class="step" id="step4">Tasks</div>
-</div>
-
+<!-- Loader -->
 <div id="loader"><div class="spinner"></div></div>
 
 <!-- Landing -->
@@ -56,8 +46,8 @@ button:hover{background:#333}
 <button onclick="loginUser()">Login</button>
 <p>New user?</p>
 <button onclick="show('register')">Register</button>
-<p>Admin?</p>
-<button onclick="show('adminLogin')">Admin Login</button>
+<p style="display:none;" id="adminLoginBtn">Admin?</p>
+<button style="display:none;" id="adminLoginButton" onclick="show('adminLogin')">Admin Login</button>
 </div>
 </section>
 
@@ -69,6 +59,7 @@ button:hover{background:#333}
 <input id="regEmail" placeholder="Email">
 <input id="regPhone" placeholder="Phone">
 <input id="regPassword" type="password" placeholder="Password">
+<input id="regReferral" placeholder="Referral Code (optional)">
 <button onclick="registerUser()">Register</button>
 </div>
 </section>
@@ -76,10 +67,11 @@ button:hover{background:#333}
 <!-- Payment -->
 <section id="payment">
 <div class="container">
-<h3>Pay Activation Fee</h3>
+<h3>Activation Payment</h3>
 <p>Pay 150 Ksh to: <b>+254703589646</b></p>
 <textarea id="mpesaMessage" placeholder="Paste M-Pesa message"></textarea>
 <button onclick="submitPayment()">Submit</button>
+<p>After payment, admin will approve manually and you will be notified.</p>
 </div>
 </section>
 
@@ -106,15 +98,13 @@ button:hover{background:#333}
 </div>
 </section>
 
-<!-- Admin Dashboard -->
+<!-- Admin Video Management -->
 <section id="adminDashboard">
-<h3>Admin Dashboard</h3>
-<div>
-<h4>Pending Payments</h4>
-<div id="payments"></div>
-<h4>Add Videos</h4>
+<h3>Admin Dashboard - Add Videos</h3>
+<div class="container">
 <input id="newVideoLink" placeholder="Video link">
 <button onclick="addVideo()">Add Video</button>
+<p>You can manage videos manually here.</p>
 </div>
 </section>
 
@@ -126,14 +116,16 @@ const firebaseConfig = {
   apiKey: "AIzaSyB0654D4iSF3E8isqCD_ujCwGT64xe4qeM",
   authDomain: "bronze-3c684.firebaseapp.com",
   projectId: "bronze-3c684",
-  storageBucket: "bronze-3c684.firebasestorage.app",
+  storageBucket: "bronze-3c684.appspot.com",
   messagingSenderId: "733916038073",
   appId: "1:733916038073:web:ef6de3d527247f5dc76c68"
 };
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 let currentUserId = null;
+let isAdmin = false;
 
 // Show section
 window.show = function(id){
@@ -149,12 +141,6 @@ function showMsg(text,color="green"){
   setTimeout(()=>{ m.innerText=""; },4000);
 }
 
-// Steps
-function setStep(n){
-  document.querySelectorAll(".step").forEach(s=>s.classList.remove("active"));
-  document.getElementById("step"+n).classList.add("active");
-}
-
 // Loader
 function showLoader(show=true){
   document.getElementById("loader").style.display = show?"block":"none";
@@ -163,6 +149,27 @@ function showLoader(show=true){
 // Register
 window.registerUser = async function(){
   showLoader(true);
+  let referralCode = regReferral.value.trim();
+  let refUserId = null;
+  if(referralCode){
+    // Check if referral code exists
+    const snap = await getDocs(collection(db,"users"));
+    snap.forEach(d=>{
+      if(d.id.slice(0,6) === referralCode) refUserId = d.id;
+    });
+    if(refUserId){
+      // Add 50 Ksh to referring user
+      const refDoc = doc(db,"users",refUserId);
+      const refSnap = await getDoc(refDoc);
+      const refData = refSnap.data();
+      const newBalance = (refData.balance || 0) + 50;
+      await updateDoc(refDoc,{balance:newBalance});
+      showMsg("Referring user earned 50 Ksh");
+    } else {
+      showMsg("Referral code invalid","red");
+    }
+  }
+
   const user = {
     name: regName.value,
     email: regEmail.value,
@@ -178,7 +185,6 @@ window.registerUser = async function(){
   const docRef = await addDoc(collection(db,"users"), user);
   currentUserId = docRef.id;
   showLoader(false);
-  setStep(2);
   showMsg("Registered successfully. Proceed to payment.");
   show('payment');
 }
@@ -196,11 +202,10 @@ window.loginUser = async function(){
       currentUserId = d.id;
       found=true;
       if(u.paid){
+        document.getElementById("balance").style.display="block";
         show('dashboard');
-        setStep(4);
       } else {
         show('payment');
-        setStep(2);
       }
     }
   });
@@ -217,53 +222,33 @@ window.submitPayment = async function(){
     approved:false
   });
   showLoader(false);
-  setStep(3);
-  showMsg("Payment sent for admin approval.");
+  showMsg("Payment sent. Admin will approve manually.");
 }
 
 // Admin login
 window.adminLogin = function(){
   if(adminUser.value==="admin" && adminPass.value==="admin123"){
+    isAdmin = true;
+    document.getElementById("adminLoginBtn").style.display="none";
+    document.getElementById("adminLoginButton").style.display="none";
     show('adminDashboard');
-    loadPayments();
-    loadVideos();
   } else showMsg("Invalid admin credentials","red");
 }
 
-// Load payments
-async function loadPayments(){
-  const div = document.getElementById("payments");
-  div.innerHTML="";
-  const snap = await getDocs(collection(db,"payments"));
-  snap.forEach(d=>{
-    const p = d.data();
-    if(!p.approved){
-      div.innerHTML += `
-      <div style="border:1px solid #ccc;padding:10px;margin:10px">
-      <p>${p.message}</p>
-      <button onclick="approve('${d.id}','${p.userId}')">Approve</button>
-      </div>`;
-    }
-  });
+// Add video manually
+window.addVideo = async function(){
+  const link = document.getElementById("newVideoLink").value;
+  if(!link) return showMsg("Enter video link","red");
+  await addDoc(collection(db,"videos"),{link});
+  showMsg("Video added successfully");
 }
 
-// Approve payment
-window.approve = async function(pid,uid){
-  await updateDoc(doc(db,"payments",pid),{approved:true});
-  await updateDoc(doc(db,"users",uid),{paid:true});
-  showMsg("User approved successfully!");
-  loadPayments();
+// Withdraw button
+window.withdraw = function(){
+  alert("Minimum withdraw amount is 500 Ksh");
 }
 
-// Update balance
-async function updateBalance(){
-  if(!currentUserId) return;
-  const userSnap = await getDoc(doc(db,"users",currentUserId));
-  const balance = userSnap.data().balance || 0;
-  document.getElementById("balance").innerText = `Balance: ${balance} Ksh`;
-}
-
-// Show tasks
+// Show tasks (videos, surveys, quiz, referral)
 window.showTask = async function(task){
   const content = document.getElementById("taskContent");
   content.innerHTML="";
@@ -311,7 +296,6 @@ window.earnVideo = async function(vidId){
   data.balance = (data.balance||0)+10;
   await updateDoc(userRef,{videos:data.videos,balance:data.balance});
   showMsg("10 Ksh added for watching video");
-  updateBalance();
 }
 
 // Answer survey
@@ -326,7 +310,6 @@ window.answerSurvey = async function(i,selected,correct){
   await updateDoc(userRef,{surveys:data.surveys,balance:data.balance});
   if(earned) showMsg("Correct! 10 Ksh added");
   else showMsg("Wrong answer. No Ksh added","red");
-  updateBalance();
 }
 
 // Answer quiz
@@ -341,15 +324,9 @@ window.answerQuiz = async function(i,selected,correct){
   await updateDoc(userRef,{quiz:data.quiz,balance:data.balance});
   if(earned) showMsg("Correct! 10 Ksh added");
   else showMsg("Wrong answer. No Ksh added","red");
-  updateBalance();
 }
 
-// Withdraw
-window.withdraw = function(){
-  alert("Minimum withdraw amount is 500 Ksh");
-}
-
-// Generate random survey questions
+// AI generated surveys
 function generateSurvey(){
   const questions = [
     {q:"Do you like mobile apps?",options:["Yes","No","Sometimes","Not sure"],correct:"Yes"},
@@ -361,7 +338,7 @@ function generateSurvey(){
   return shuffleArray(questions).slice(0,5);
 }
 
-// Generate random quiz questions
+// AI generated quiz
 function generateQuiz(){
   const questions = [
     {q:"What is HTML?",options:["a) Language","b) Browser","c) App","d) OS"],correct:"a) Language"},
@@ -375,21 +352,6 @@ function generateQuiz(){
 
 // Shuffle array
 function shuffleArray(a){return a.sort(()=>Math.random()-0.5)}
-
-// Admin add video
-window.addVideo = async function(){
-  const link = document.getElementById("newVideoLink").value;
-  if(!link) return showMsg("Enter video link","red");
-  await addDoc(collection(db,"videos"),{link});
-  showMsg("Video added successfully");
-}
-
-// Load existing videos (optional)
-async function loadVideos(){}
-
-// Initialize balance
-updateBalance();
-
 </script>
 </body>
 </html>
