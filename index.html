@@ -31,7 +31,6 @@ button:hover{background:#333}
 <div id="msg"></div>
 <div id="notify"></div>
 
-<!-- Loader -->
 <div id="loader"><div class="spinner"></div></div>
 
 <!-- Landing -->
@@ -49,6 +48,17 @@ button:hover{background:#333}
 <button onclick="loginUser()">Login</button>
 <p>New user?</p>
 <button onclick="show('register')">Register</button>
+</div>
+</section>
+
+<!-- OTP Verification -->
+<section id="otpVerify">
+<div class="container">
+<h3>OTP Verification</h3>
+<p>Enter the code displayed on screen:</p>
+<p id="otpDisplay" style="font-weight:bold;font-size:20px;text-align:center;"></p>
+<input id="otpInput" placeholder="Enter OTP">
+<button onclick="verifyOTP()">Verify</button>
 </div>
 </section>
 
@@ -89,7 +99,7 @@ button:hover{background:#333}
 <div id="taskContent" style="margin-top:20px;"></div>
 </section>
 
-<!-- Admin Login (separate) -->
+<!-- Admin Login -->
 <section id="adminLogin">
 <div class="container">
 <h3>Admin Login</h3>
@@ -102,12 +112,10 @@ button:hover{background:#333}
 <!-- Admin Dashboard -->
 <section id="adminDashboard">
 <h3>Admin Dashboard</h3>
-
 <div class="container">
 <h4>Add Videos</h4>
 <input id="newVideoLink" placeholder="Video link">
 <button onclick="addVideo()">Add Video</button>
-
 <h4>Pending Payments</h4>
 <div id="pendingPayments"></div>
 </div>
@@ -130,32 +138,33 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 let currentUserId = null;
+let currentOTP = null;
 let isAdmin = false;
 
-// Show section
 window.show = function(id){
   document.querySelectorAll("section").forEach(s=>s.style.display="none");
   document.getElementById(id).style.display="block";
   if(id==='adminDashboard') loadPendingPayments();
 }
 
-// Messages
 function showMsg(text,color="green"){
   const m = document.getElementById("msg");
   m.style.color = color;
   m.innerText = text;
   setTimeout(()=>{ m.innerText=""; },4000);
 }
-
 function showNotify(text){
   const n = document.getElementById("notify");
   n.innerHTML = `<div class="notification">${text}</div>`;
   setTimeout(()=>{ n.innerHTML=""; },5000);
 }
-
-// Loader
 function showLoader(show=true){
   document.getElementById("loader").style.display = show?"block":"none";
+}
+
+// Generate random OTP
+function generateOTP(){
+  return Math.floor(1000 + Math.random()*9000).toString();
 }
 
 // Register
@@ -179,7 +188,6 @@ window.registerUser = async function(){
       showMsg("Referral code invalid","red");
     }
   }
-
   const user = {
     name: regName.value,
     email: regEmail.value,
@@ -197,7 +205,6 @@ window.registerUser = async function(){
   showLoader(false);
   showMsg("Registered successfully. Proceed to payment.");
   show('payment');
-  listenPaymentApproval(); // start listening for approval
 }
 
 // Login
@@ -212,17 +219,23 @@ window.loginUser = async function(){
     if(u.phone===phone && u.password===pass){
       currentUserId = d.id;
       found=true;
-      if(u.paid){
-        document.getElementById("balance").style.display="block";
-        show('dashboard');
-      } else {
-        show('payment');
-        listenPaymentApproval();
-      }
+      currentOTP = generateOTP();
+      document.getElementById("otpDisplay").innerText = currentOTP;
+      show('otpVerify');
     }
   });
   showLoader(false);
   if(!found) showMsg("Invalid login details","red");
+}
+
+// Verify OTP
+window.verifyOTP = function(){
+  const input = document.getElementById("otpInput").value;
+  if(input === currentOTP){
+    showNotify("OTP verified successfully!");
+    document.getElementById("balance").style.display="block";
+    show('dashboard');
+  } else showMsg("Incorrect OTP","red");
 }
 
 // Submit payment
@@ -254,7 +267,7 @@ window.addVideo = async function(){
   showMsg("Video added successfully");
 }
 
-// Withdraw button
+// Withdraw
 window.withdraw = function(){
   alert("Minimum withdraw amount is 500 Ksh");
 }
@@ -281,7 +294,7 @@ async function loadPendingPayments(){
   });
 }
 
-// Approve payment manually
+// Approve payment
 window.approvePayment = async function(paymentId,userId){
   const payRef = doc(db,"payments",paymentId);
   await updateDoc(payRef,{approved:true});
@@ -306,7 +319,7 @@ function listenPaymentApproval(){
   });
 }
 
-// Task functions (videos, surveys, quiz, referral) same as previous code
+// Task functions (videos, surveys, quiz, referral) can be added here...
 </script>
 </body>
 </html>
