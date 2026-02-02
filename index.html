@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BRONZE MONEY AGENCIES</title>
+<style>
+body{margin:0;font-family:Arial,sans-serif;background:#f2f2f2}
+header{background:#111;color:#fff;padding:15px;display:flex;justify-content:space-between;align-items:center;}
+#balance{background:orange;padding:5px 10px;border-radius:5px;cursor:pointer}
+section{display:none;padding:20px}
+.container{background:#fff;padding:20px;border-radius:8px;max-width:400px;margin:auto}
+input,textarea,button,select{width:100%;padding:10px;margin:5px 0}
+button{background:#111;color:#fff;border:none;border-radius:5px;cursor:pointer}
+button:hover{background:#333}
+#msg{text-align:center;font-weight:bold;margin:10px}
+#steps{display:flex;justify-content:center;gap:10px;margin:10px;}
+.step{padding:8px 12px;background:#ccc;border-radius:20px;font-size:12px}
+.step.active{background:orange;color:#fff}
+#loader{display:none;text-align:center;margin:10px}
+.spinner{border:6px solid #f3f3f3;border-top:6px solid orange;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;margin:auto}
+@keyframes spin{100%{transform:rotate(360deg)}}
+.task-buttons button{margin:5px 5px 5px 0}
+</style>
+</head>
+<body>
+
+<header>
+<h3>BRONZE MONEY AGENCIES</h3>
+<div id="balance">Balance: 0 Ksh</div>
+</header>
+
+<div id="msg"></div>
+
+<div id="steps">
+  <div class="step" id="step1">Register</div>
+  <div class="step" id="step2">Payment</div>
+  <div class="step" id="step3">Approval</div>
+  <div class="step" id="step4">Tasks</div>
+</div>
+
+<div id="loader"><div class="spinner"></div></div>
+
+<!-- Landing -->
+<section id="landing" style="display:block;text-align:center">
+<h2>Welcome</h2>
+<button onclick="show('login')">Get Started</button>
+</section>
+
+<!-- Login -->
+<section id="login">
+<div class="container">
+<h3>Login</h3>
+<input id="loginPhone" placeholder="Phone">
+<input id="loginPassword" type="password" placeholder="Password">
+<button onclick="loginUser()">Login</button>
+<p>New user?</p>
+<button onclick="show('register')">Register</button>
+<p>Admin?</p>
+<button onclick="show('adminLogin')">Admin Login</button>
+</div>
+</section>
+
+<!-- Register -->
+<section id="register">
+<div class="container">
+<h3>Register</h3>
+<input id="regName" placeholder="Full Name">
+<input id="regEmail" placeholder="Email">
+<input id="regPhone" placeholder="Phone">
+<input id="regPassword" type="password" placeholder="Password">
+<button onclick="registerUser()">Register</button>
+</div>
+</section>
+
+<!-- Payment -->
+<section id="payment">
+<div class="container">
+<h3>Pay Activation Fee</h3>
+<p>Pay 150 Ksh to: <b>+254703589646</b></p>
+<textarea id="mpesaMessage" placeholder="Paste M-Pesa message"></textarea>
+<button onclick="submitPayment()">Submit</button>
+</div>
+</section>
+
+<!-- Dashboard -->
+<section id="dashboard">
+<h3>Dashboard</h3>
+<div class="task-buttons" style="display:flex;flex-wrap:wrap;">
+  <button onclick="showTask('videos')">Videos</button>
+  <button onclick="showTask('surveys')">Surveys</button>
+  <button onclick="showTask('quiz')">Quiz</button>
+  <button onclick="showTask('referral')">Referral</button>
+  <button onclick="withdraw()">Withdraw</button>
+</div>
+<div id="taskContent" style="margin-top:20px;"></div>
+</section>
+
+<!-- Admin Login -->
+<section id="adminLogin">
+<div class="container">
+<h3>Admin Login</h3>
+<input id="adminUser" placeholder="Username">
+<input id="adminPass" type="password" placeholder="Password">
+<button onclick="adminLogin()">Login</button>
+</div>
+</section>
+
+<!-- Admin Dashboard -->
+<section id="adminDashboard">
+<h3>Admin Dashboard</h3>
+<div>
+<h4>Pending Payments</h4>
+<div id="payments"></div>
+<h4>Add Videos</h4>
+<input id="newVideoLink" placeholder="Video link">
+<button onclick="addVideo()">Add Video</button>
+</div>
+</section>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyB0654D4iSF3E8isqCD_ujCwGT64xe4qeM",
+  authDomain: "bronze-3c684.firebaseapp.com",
+  projectId: "bronze-3c684",
+  storageBucket: "bronze-3c684.firebasestorage.app",
+  messagingSenderId: "733916038073",
+  appId: "1:733916038073:web:ef6de3d527247f5dc76c68"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+let currentUserId = null;
+
+// Show section
+window.show = function(id){
+  document.querySelectorAll("section").forEach(s=>s.style.display="none");
+  document.getElementById(id).style.display="block";
+}
+
+// Messages
+function showMsg(text,color="green"){
+  const m = document.getElementById("msg");
+  m.style.color = color;
+  m.innerText = text;
+  setTimeout(()=>{ m.innerText=""; },4000);
+}
+
+// Steps
+function setStep(n){
+  document.querySelectorAll(".step").forEach(s=>s.classList.remove("active"));
+  document.getElementById("step"+n).classList.add("active");
+}
+
+// Loader
+function showLoader(show=true){
+  document.getElementById("loader").style.display = show?"block":"none";
+}
+
+// Register
+window.registerUser = async function(){
+  showLoader(true);
+  const user = {
+    name: regName.value,
+    email: regEmail.value,
+    phone: regPhone.value,
+    password: regPassword.value,
+    paid:false,
+    balance:0,
+    videos:[],
+    surveys:[],
+    quiz:[],
+    referrals:[]
+  };
+  const docRef = await addDoc(collection(db,"users"), user);
+  currentUserId = docRef.id;
+  showLoader(false);
+  setStep(2);
+  showMsg("Registered successfully. Proceed to payment.");
+  show('payment');
+}
+
+// Login
+window.loginUser = async function(){
+  showLoader(true);
+  const phone = loginPhone.value;
+  const pass = loginPassword.value;
+  const snap = await getDocs(collection(db,"users"));
+  let found=false;
+  snap.forEach(d=>{
+    const u = d.data();
+    if(u.phone===phone && u.password===pass){
+      currentUserId = d.id;
+      found=true;
+      if(u.paid){
+        show('dashboard');
+        setStep(4);
+      } else {
+        show('payment');
+        setStep(2);
+      }
+    }
+  });
+  showLoader(false);
+  if(!found) showMsg("Invalid login details","red");
+}
+
+// Submit payment
+window.submitPayment = async function(){
+  showLoader(true);
+  await addDoc(collection(db,"payments"),{
+    userId: currentUserId,
+    message: mpesaMessage.value,
+    approved:false
+  });
+  showLoader(false);
+  setStep(3);
+  showMsg("Payment sent for admin approval.");
+}
+
+// Admin login
+window.adminLogin = function(){
+  if(adminUser.value==="admin" && adminPass.value==="admin123"){
+    show('adminDashboard');
+    loadPayments();
+    loadVideos();
+  } else showMsg("Invalid admin credentials","red");
+}
+
+// Load payments
+async function loadPayments(){
+  const div = document.getElementById("payments");
+  div.innerHTML="";
+  const snap = await getDocs(collection(db,"payments"));
+  snap.forEach(d=>{
+    const p = d.data();
+    if(!p.approved){
+      div.innerHTML += `
+      <div style="border:1px solid #ccc;padding:10px;margin:10px">
+      <p>${p.message}</p>
+      <button onclick="approve('${d.id}','${p.userId}')">Approve</button>
+      </div>`;
+    }
+  });
+}
+
+// Approve payment
+window.approve = async function(pid,uid){
+  await updateDoc(doc(db,"payments",pid),{approved:true});
+  await updateDoc(doc(db,"users",uid),{paid:true});
+  showMsg("User approved successfully!");
+  loadPayments();
+}
+
+// Update balance
+async function updateBalance(){
+  if(!currentUserId) return;
+  const userSnap = await getDoc(doc(db,"users",currentUserId));
+  const balance = userSnap.data().balance || 0;
+  document.getElementById("balance").innerText = `Balance: ${balance} Ksh`;
+}
+
+// Show tasks
+window.showTask = async function(task){
+  const content = document.getElementById("taskContent");
+  content.innerHTML="";
+  if(task==="videos"){
+    const snap = await getDocs(collection(db,"videos"));
+    snap.forEach((v,i)=>{
+      const link = v.data().link;
+      content.innerHTML += `<p>Video ${i+1} <a href="${link}" target="_blank">Watch</a> <button onclick="earnVideo('${v.id}')">Mark Watched</button></p>`;
+    });
+  }
+  if(task==="surveys"){
+    const surveys = generateSurvey();
+    surveys.forEach((s,i)=>{
+      let optsHtml = "";
+      s.options.forEach(o=>{
+        optsHtml += `<button onclick="answerSurvey('${i}','${o}','${s.correct}')">${o}</button> `;
+      });
+      content.innerHTML += `<p>${s.q}</p>${optsHtml}<br>`;
+    });
+  }
+  if(task==="quiz"){
+    const quiz = generateQuiz();
+    quiz.forEach((q,i)=>{
+      let optsHtml = "";
+      q.options.forEach(o=>{
+        optsHtml += `<button onclick="answerQuiz('${i}','${o}','${q.correct}')">${o}</button> `;
+      });
+      content.innerHTML += `<p>${q.q}</p>${optsHtml}<br>`;
+    });
+  }
+  if(task==="referral"){
+    content.innerHTML = `<p>Your referral code: <b>${currentUserId.slice(0,6)}</b></p>
+    <p>Share with friends to earn 50 Ksh!</p>`;
+  }
+}
+
+// Earn video
+window.earnVideo = async function(vidId){
+  const userRef = doc(db,"users",currentUserId);
+  const userSnap = await getDoc(userRef);
+  let data = userSnap.data();
+  if(!data.videos) data.videos=[];
+  if(data.videos.length>=4){ showMsg("Daily video limit reached","red"); return; }
+  data.videos.push({video:vidId,date:new Date().toLocaleDateString(),earned:10});
+  data.balance = (data.balance||0)+10;
+  await updateDoc(userRef,{videos:data.videos,balance:data.balance});
+  showMsg("10 Ksh added for watching video");
+  updateBalance();
+}
+
+// Answer survey
+window.answerSurvey = async function(i,selected,correct){
+  const userRef = doc(db,"users",currentUserId);
+  const userSnap = await getDoc(userRef);
+  let data = userSnap.data();
+  if(!data.surveys) data.surveys=[];
+  const earned = selected===correct?10:0;
+  data.surveys.push({q:i,selected,correct,earned,date:new Date().toLocaleDateString()});
+  data.balance = (data.balance||0)+earned;
+  await updateDoc(userRef,{surveys:data.surveys,balance:data.balance});
+  if(earned) showMsg("Correct! 10 Ksh added");
+  else showMsg("Wrong answer. No Ksh added","red");
+  updateBalance();
+}
+
+// Answer quiz
+window.answerQuiz = async function(i,selected,correct){
+  const userRef = doc(db,"users",currentUserId);
+  const userSnap = await getDoc(userRef);
+  let data = userSnap.data();
+  if(!data.quiz) data.quiz=[];
+  const earned = selected===correct?10:0;
+  data.quiz.push({q:i,selected,correct,earned,date:new Date().toLocaleDateString()});
+  data.balance = (data.balance||0)+earned;
+  await updateDoc(userRef,{quiz:data.quiz,balance:data.balance});
+  if(earned) showMsg("Correct! 10 Ksh added");
+  else showMsg("Wrong answer. No Ksh added","red");
+  updateBalance();
+}
+
+// Withdraw
+window.withdraw = function(){
+  alert("Minimum withdraw amount is 500 Ksh");
+}
+
+// Generate random survey questions
+function generateSurvey(){
+  const questions = [
+    {q:"Do you like mobile apps?",options:["Yes","No","Sometimes","Not sure"],correct:"Yes"},
+    {q:"Do you use online payments?",options:["Yes","No","Sometimes","Not sure"],correct:"Yes"},
+    {q:"Do you watch online videos?",options:["Yes","No","Sometimes","Not sure"],correct:"Yes"},
+    {q:"Do you like social media?",options:["Yes","No","Sometimes","Not sure"],correct:"Yes"},
+    {q:"Do you enjoy technology?",options:["Yes","No","Sometimes","Not sure"],correct:"Yes"}
+  ];
+  return shuffleArray(questions).slice(0,5);
+}
+
+// Generate random quiz questions
+function generateQuiz(){
+  const questions = [
+    {q:"What is HTML?",options:["a) Language","b) Browser","c) App","d) OS"],correct:"a) Language"},
+    {q:"What is CSS?",options:["a) Language","b) Style","c) Browser","d) App"],correct:"b) Style"},
+    {q:"What is JavaScript?",options:["a) Programming","b) Browser","c) Database","d) OS"],correct:"a) Programming"},
+    {q:"What is AI?",options:["a) App","b) Technology","c) Programming","d) Style"],correct:"b) Technology"},
+    {q:"What is Firebase?",options:["a) Backend","b) Browser","c) Language","d) OS"],correct:"a) Backend"}
+  ];
+  return shuffleArray(questions).slice(0,5);
+}
+
+// Shuffle array
+function shuffleArray(a){return a.sort(()=>Math.random()-0.5)}
+
+// Admin add video
+window.addVideo = async function(){
+  const link = document.getElementById("newVideoLink").value;
+  if(!link) return showMsg("Enter video link","red");
+  await addDoc(collection(db,"videos"),{link});
+  showMsg("Video added successfully");
+}
+
+// Load existing videos (optional)
+async function loadVideos(){}
+
+// Initialize balance
+updateBalance();
+
+</script>
+</body>
+</html>
